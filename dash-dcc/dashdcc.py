@@ -1,198 +1,109 @@
-#Se requiere instalar estos completementos previos, verificar versiones en Requirements.txt
 import os
-import streamlit as st # type: ignore
-import pandas as pd # type: ignore
-import plotly.express as px # type: ignore
-import altair as alt # type: ignore
-from vega_datasets import data # type: ignore
-
+import streamlit as st  # type: ignore
+import pandas as pd  # type: ignore
+import plotly.express as px  # type: ignore
+import altair as alt  # type: ignore
+from vega_datasets import data  # type: ignore
 import numpy as np
-
 from google_sheet_actions import GoogleSheetService
 
-min_year = 2014
-max_year = 2025
+# Configuración inicial
+MIN_YEAR = 2014
+MAX_YEAR = 2025
 
-nombre = ''
-
-google_connection = None
-paises = None
-
-# Definimos los parámetros de configuración de la aplicación
 st.set_page_config(
-    page_title="DCC Dashboard 2025", #Título de la página
-    page_icon="📊", # Ícono
-    layout="wide", # Forma de layout ancho o compacto
-    initial_sidebar_state="expanded" # Definimos si el sidebar aparece expandido o colapsado
+    page_title="DCC Dashboard 2025",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-#TITULO PRINCIPAL DEL DASHBOARD *******************
-st.title('Departamento de Ciencias de la Computación - UCuenca')
+st.title("Departamento de Ciencias de la Computación - UCuenca")
 
-#BARRA LATERAL
-#st.subheader("Estadísticas personalizadas")
-# Declaramos los parámetros en la barra lateral
+# Variables globales
+google_connection = None
+tipos_publicaciones = None
+maestros = None
+nombre = ""
+
+# Barra lateral
 with st.sidebar:
-    # Filtro de Año de publicación
-    file_name_gs = 'dash-dcc/dcc-pruebas-493a3b6215f3.json'
-    google_sheet = 'DBDCC25'
-    sheet_name = 'Publicaciones'
-
+    file_name_gs = "dash-dcc/dcc-pruebas-493a3b6215f3.json"
+    google_sheet = "DBDCC25"
+    sheet_name = "Publicaciones"
     google_connection = GoogleSheetService(file_name_gs, google_sheet, sheet_name)
-
-    try:
-        google_connection.name_columns = google_connection.read_column_names()
-        columna_nombres = google_connection.name_columns.get('nombres').get('letra')
-        rango_anios = st.slider("Selecciona un rango de años", min_year, max_year, (min_year, max_year))
-    except Exception as e:
-        st.error(f"Error al cargar nombres de columnas: {e}")
-
-    sheet_name = 'Queries'
-    name_column = google_connection.name_columns
-    google_connection = GoogleSheetService(file_name_gs, google_sheet, sheet_name)
-    google_connection.name_columns = name_column
     
     try:
-        paises = google_connection.read_data_all_countries('Paises', 'B')
+        rango_anios = st.slider("Selecciona un rango de años", MIN_YEAR, MAX_YEAR, (MIN_YEAR, MAX_YEAR))
     except Exception as e:
-        st.error(f"Error al cargar paises: {e}")
-
+        st.error(f"Error al cargar nombres de columnas: {e}")
+    
     try:
-        nombres_maestros = google_connection.read_data_specific_columns(f"UNIQUE(Publicaciones!{columna_nombres}:{columna_nombres})", "SELECT Col1 WHERE Col1 <> ''")
-        nombres_maestros = nombres_maestros['nombres'].tolist()
-        nombres_maestros.insert(0, 'Todos')
-        if 'Todos' in nombres_maestros:
-            print("Index of 'Todos':", nombres_maestros.index('Todos'))
-        else:
-            st.warning("'Todos' no encontrado en la lista de nombres")
-        nombre = st.selectbox("Selecciona un autor", nombres_maestros)
+        departamentos = google_connection.get_unique_value_column("departamento")
+        departamentos.remove("#N/A")
+        
+        def _select_all_departamentos():
+            if "Todos" in st.session_state.selected_departamentos:
+                st.session_state.selected_departamentos = ["Todos"]
+                
+        departamento = st.multiselect("Selecciona un departamento", departamentos, key="selected_departamentos", on_change=_select_all_departamentos, default=["Todos"])
     except Exception as e:
-        st.error(f"Error al leer el archivo: {e}")
+        st.error(f"Error al leer los departamentos: {e}")
+    
+    try:
+        if "Todos" not in departamento:
+            maestros = google_connection.get_professors_by_department(departamento)
+        else:
+            maestros = google_connection.get_unique_value_column("nombres")
+            
+        def _select_all_maestros():
+            if "Todos" in st.session_state.selected_maestros:
+                st.session_state.selected_maestros = ["Todos"]
+                
+        nombre = st.multiselect("Selecciona un autor", maestros, key="selected_maestros", on_change=_select_all_maestros, default=["Todos"])
+    except Exception as e:
+        st.error(f"Error al leer los maestros: {e}")
+    
     st.text("Base de datos externas")
     st.page_link("https://www.scopus.com/pages/organization/60072035", label="Scopus", icon="🌎")
 
-# VISTA GENERAL DE LOS RESULTADOS **************
+# Sección de estadísticas generales
+st.header("Estadísticas Generales")
 
-st.header('Estadísticas Generales')
-
-# La idea es aquí en la lectura obtener el dataset desde una hoja de GoogleSheets, por ahora se ha hecho local...
-# Cargamos el dataframe desde un CSV
-# file_path = 'dash-dcc/DBDCC25.csv'
-# if os.path.exists(file_path):
-#     try:
-#         dfDatos = pd.read_csv(file_path, sep=';', encoding='latin-1')
-#         dfDatos['indexacion'] = dfDatos['indexacion'].replace(['', 'N/A', 'None', ' '], 'Por definir')  # Reemplazar valores
-#     except Exception as e:
-#         st.error(f"Error al leer el archivo: {e}")
-# else:
-#     st.error(f"Archivo no encontrado: {file_path}")
-
-# PUBLICACIONES TOTALES
-
+# Publicaciones totales
 try:
-    if nombre != "Todos":
-        df_publicaciones_totales = google_connection.read_data_total_per_category('Publicaciones', rango_anios, nombre)
-    else:
-        df_publicaciones_totales = google_connection.read_data_total_per_category('Publicaciones', rango_anios, final_column='T')
-    # google_connection.read_data_for_formula(f"=QUERY(COUNTUNIQUE(Publicaciones!A:A), \"SELECT *\")")
-    print("df_publicaciones_totales", df_publicaciones_totales)
-    st.metric("Publicaciones Totales", df_publicaciones_totales.iloc[0, 0])
+    filtro = nombre if "Todos" not in nombre else maestros[1:]
+    df_publicaciones_totales = google_connection.get_total_by_category("codigo", rango_anios, filtro)
+    titulo_totales = f"Publicaciones Totales de {', '.join(filtro)}" if "Todos" not in nombre else "Publicaciones Totales"
+    
+    st.metric(titulo_totales, df_publicaciones_totales)
 except Exception as e:
     st.error(f"Error en Publicaciones Totales: {e}")
-    
-## GRAFICOS DE PASTEL    
-def mostrar_grafico_pastel(google_connection, nombre, rango_anios, categoria_a_buscar, nombre_categoria, titulo_grafico, columna_final_contar_todo='T'):
+
+# Función para gráficos
+
+def mostrar_grafico(tipo, nombre, rango_anios, categoria, nombre_categoria, titulo_grafico):
     try:
-        lista_columnas = ['codigo', categoria_a_buscar]
-        if nombre != "Todos":
-            lista_columnas.append('nombres')
-            df_publicaciones_por_anio = google_connection.read_data_per_category('Publicaciones', lista_columnas, categoria_a_buscar, nombre_categoria, rango_anios, nombre)
+        filtro = nombre if "Todos" not in nombre else maestros[1:]
+        df_publicaciones = google_connection.get_data_by_category(categoria, rango_anios, filtro)
+        
+        if tipo == "pastel":
+            fig = px.pie(df_publicaciones, names=categoria[0], values="CANTIDAD", title=titulo_grafico, labels={categoria[0]: nombre_categoria})
         else:
-            df_publicaciones_por_anio = google_connection.read_data_per_category('Publicaciones', lista_columnas, categoria_a_buscar, nombre_categoria, rango_anios, final_column=columna_final_contar_todo)
-            
-        print(df_publicaciones_por_anio)
-        #grafica en pastel
-        fig = px.pie(df_publicaciones_por_anio, names=nombre_categoria, values='CANTIDAD',
-                          title=titulo_grafico)
-        fig.update_layout(
-            legend=dict(
-                font=dict(size=10),  # Reduce tamaño para evitar que se corten
-                orientation="v",  # Asegura que la leyenda sea vertical
-                yanchor="top",
-                y=1.02,
-                xanchor="left",
-                x=1.05
-            )
-        )
+            fig = px.bar(df_publicaciones, x=categoria[0], y="CANTIDAD", title=titulo_grafico, labels={categoria[0]: nombre_categoria, "CANTIDAD": "Cantidad"}) 
+        
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
-        st.error(f"Error en Publicaciones por año: {e}")
+        st.error(f"Error en {nombre_categoria}: {e}")
 
-def mostrar_grafico_barras(google_connection, nombre, rango_anios, categoria_a_buscar, nombre_categoria, titulo_grafico, columna_final_contar_todo='T'):
-    try:
-        lista_columnas = ['codigo', categoria_a_buscar]
-        if nombre != "Todos":
-            lista_columnas.append('nombres')
-            df_publicaciones_por_anio = google_connection.read_data_per_category('Publicaciones', lista_columnas, categoria_a_buscar, nombre_categoria, rango_anios, nombre)
-        else:
-            df_publicaciones_por_anio = google_connection.read_data_per_category('Publicaciones', lista_columnas, categoria_a_buscar, nombre_categoria, rango_anios, final_column=columna_final_contar_todo)
-            
-        print(df_publicaciones_por_anio)
-        #grafica en pastel
-        fig = px.bar(df_publicaciones_por_anio, x=nombre_categoria, y='CANTIDAD',
-                          title=titulo_grafico)
-        st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error en Publicaciones por año: {e}")
-# PUBLICACIONES POR AÑO ----------------
-
-# Llamada a la función
-
-# TIPO DE PUBLICACIÓN ----------------
-# # métricas en números
-# publication_types = dfDatos["tipo_publicacion"].unique()
-# for pub_type in publication_types:
-#     count = len(dfDatos[dfDatos["tipo_publicacion"] == pub_type])
-#     st.metric(f"Publications ({pub_type})", count)
-
-# # Gráfico de pastel
-
-
-
-
-# CLASIFICACION POR INDEXACION -----------------
-
-# PENDIENTE ESTADÍSTICAS DE LOS PROYECTOS
-
-
-#*********************************************************
-#st.header(' ')
-#Se añade una barra lateral que sirve para filtrar, se deberá establer búsquedas por periodos, autor, conferencias, paises,etc... (analizar con DCC)
-
-
-# Mostramos las métricas
-#dfAnoActual = dfDatos[dfDatos['anio_publicacion']==parAno]
-
-# Declaramos 2 columnas en una proporción de 50% y 50%
-mostrar_grafico_barras(google_connection, nombre, rango_anios, 'anio_publicacion', 'AÑO', 'Publicaciones por Año')
-with st.container():
-    c1,c2 = st.columns(2)
-    with c1:    
-        mostrar_grafico_pastel(google_connection, nombre, rango_anios, 'nombre', 'INDEXACIÓN', 'Publicaciones por Indexación', columna_final_contar_todo='Z')
-        mostrar_grafico_pastel(google_connection, nombre, rango_anios, 'tipo_publicacion', 'TIPO PUBLICACIÓN', 'Publicaciones por Tipo de Publicación')
-    with c2:
-        mostrar_grafico_pastel(google_connection, nombre, rango_anios, 'nombre_area_frascati_amplio', 'ÁREA DE CONOCIMIENTO', 'Publicaciones por Área de Conocimiento')
-        mostrar_grafico_pastel(google_connection, nombre, rango_anios, 'nombre_area_unesco_amplio', 'ÁREA DE CONOCIMIENTO UNESCO', 'Publicaciones por Área de Conocimiento UNESCO')
-
-if nombre == "Todos":
-    mostrar_grafico_barras(google_connection, nombre, rango_anios, 'nombres', 'AUTOR', 'Publicaciones por Autor', columna_final_contar_todo='AS')
-
-
-#MAPA
-def mostrar_mapa(df):
-    print("Paises:", paises)
-    
-    df_full = paises.merge(df, on="COUNTRIES", how="left").fillna(0)
+# Función para mostrar mapa
+def mostrar_mapa():
+    if "Todos" in departamento:
+        df_paises = google_connection.get_by_countries(tipo_publicacion, rango_anios, nombre)
+    elif "Todos" in nombre:
+        df_paises = google_connection.get_by_countries(tipo_publicacion, rango_anios, maestros[1:])
+    else:
+        df_paises = google_connection.get_by_countries(tipo_publicacion, rango_anios, nombre)
         
     url = 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json'
     world_map_data = alt.topo_feature(url, 'countries')
@@ -206,7 +117,7 @@ def mostrar_mapa(df):
         tooltip=['COUNTRIES:N', 'CANTIDAD:Q']
     ).transform_lookup(
         lookup='properties.name',  
-        from_=alt.LookupData(df_full, key='COUNTRIES', fields=['COUNTRIES', 'CANTIDAD'])
+        from_=alt.LookupData(df_paises, key='COUNTRIES', fields=['COUNTRIES', 'CANTIDAD'])
     ).project(
         type='naturalEarth1'
     ).properties(
@@ -220,17 +131,31 @@ def mostrar_mapa(df):
     )
     st.altair_chart(fig, use_container_width=True)
 
-if nombre != "Todos":
-    df_paises = google_connection.read_data_per_countries('Publicaciones', rango_anios, nombre)
-    mostrar_mapa(df_paises)
-    print(df_paises)
-else:
-    df_paises = google_connection.read_data_per_countries('Publicaciones', rango_anios, final_column='T')
-    print(df_paises)
-    mostrar_mapa(df_paises)
+# Mostrar gráficos
+mostrar_grafico("barras", nombre, rango_anios, ["anio_publicacion"], "Año", "Publicaciones por Año")
 
-st.subheader("Más resultados...")
+with st.container():
+    c1, c2 = st.columns(2)
+    with c1:
+        mostrar_grafico("pastel", nombre, rango_anios, ["nombre"], "INDEXACION", "Publicaciones por Indexación")
+        mostrar_grafico("pastel", nombre, rango_anios, ["nombre_area_frascati_amplio"], "Área de Conocimiento", "Publicaciones por Área de Conocimiento")
+    with c2:
+        mostrar_grafico("pastel", nombre, rango_anios, ["tipo_publicacion"], "Tipo de Publicación", "Publicaciones por Tipo de Publicación")        
+        mostrar_grafico("pastel", nombre, rango_anios, ["nombre_area_unesco_amplio"], "Área de Conocimiento UNESCO", "Publicaciones por Área de Conocimiento UNESCO")
+    
+    mostrar_grafico("barras", nombre, rango_anios, ["nombres"], "Autor", "Publicaciones por Autor")
 
-#Además Deberá existir una sección para Proyectos de Investigación y para Proyectos de Vinculación
+# Mostrar mapa
+try:
+    tipos_publicaciones = google_connection.get_unique_value_column("tipo_publicacion")
+    
+    def _selected_all_tipos():
+        if "Todos" in st.session_state.selected_tipos:
+            st.session_state.selected_tipos = ["Todos"]
+    
+    tipo_publicacion = st.multiselect("Selecciona un tipo de publicación", tipos_publicaciones, key="selected_tipos", on_change=_selected_all_tipos, default=["Todos"])
+except Exception as e:
+    st.error(f"Error al leer los tipos de publicaciones: {e}")
 
-
+# Muestra el mapa
+mostrar_mapa()
