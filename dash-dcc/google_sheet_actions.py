@@ -84,6 +84,6 @@ class GoogleSheetService:
         filtered_data['pais'] = filtered_data['pais'].str.lower()
         
         data = pd.merge(paises, filtered_data, left_on='nombre', right_on='pais', how='left').fillna(0)[['name', 'CANTIDAD']]
-        data = data.rename(columns={'name': 'COUNTRIES'})
+        data = data.rename(columns={'name': 'PAISES'})
         
         return data

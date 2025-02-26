@@ -112,10 +112,10 @@ def mostrar_mapa():
             alt.Color('CANTIDAD:Q', scale=alt.Scale(scheme='bluegreen')),  
             alt.value('lightgray')  # Si no tiene datos, se muestra en gris
         ),
-        tooltip=['COUNTRIES:N', 'CANTIDAD:Q']
+        tooltip=['PAISES:N', 'CANTIDAD:Q']
     ).transform_lookup(
         lookup='properties.name',  
-        from_=alt.LookupData(df_paises, key='COUNTRIES', fields=['COUNTRIES', 'CANTIDAD'])
+        from_=alt.LookupData(df_paises, key='PAISES', fields=['PAISES', 'CANTIDAD'])
     ).project(
         type='naturalEarth1'
     ).properties(
