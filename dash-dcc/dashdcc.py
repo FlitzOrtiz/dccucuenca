@@ -1,10 +1,8 @@
-import os
 import streamlit as st  # type: ignore
 import pandas as pd  # type: ignore
 import plotly.express as px  # type: ignore
 import altair as alt  # type: ignore
 from vega_datasets import data  # type: ignore
-import numpy as np
 from google_sheet_actions import GoogleSheetService
 
 # Configuración inicial
